@@ -12,13 +12,16 @@
 #'
 #' @export
 #' @param force_new forget existing pat, always ask for new one.
+#' @param url a custom server for GitHub Enterprise users.
 #' @param validate checks with the github API that this token works. Defaults to
 #' `TRUE` only in an interactive R session (not when running e.g. CMD check).
 #' @param verbose prints a message showing the credential helper and PAT owner.
 #' @return Returns `TRUE` if a valid GITHUB_PAT was set, and FALSE if not.
-set_github_pat <- function(force_new = FALSE, validate = interactive(), verbose = validate){
-  pat_user <- Sys.getenv("GITHUB_PAT_USER", 'PersonalAccessToken')
-  pat_url <- sprintf('https://%s@github.com', pat_user)
+set_github_pat <- function(force_new = FALSE, url = 'https://api.github.com',
+                           validate = interactive(), verbose = validate){
+  url_data <- get_pat_credential_url(url)
+  pat_url <- url_data$url
+  pat_var <- url_data$var
   if(isTRUE(force_new))
     git_credential_forget(pat_url)
   if(isTRUE(verbose))
@@ -36,7 +39,7 @@ set_github_pat <- function(force_new = FALSE, validate = interactive(), verbose 
   for(i in 1:3){
     # The username doesn't have to be real, Github seems to ignore username for PATs
     cred <- git_credential_ask(pat_url, verbose = verbose)
-    if(length(cred$password)){
+    if(length(cred$password) && !is.na(cred$password)){
       if(nchar(cred$password) < 40){
         message("Please enter a token in the password field, not your master password! Let's try again :-)")
         message("To generate a new token, visit: https://github.com/settings/tokens")
@@ -45,7 +48,7 @@ set_github_pat <- function(force_new = FALSE, validate = interactive(), verbose 
       }
       if(isTRUE(validate)) {
         hx <- curl::handle_setheaders(curl::new_handle(), Authorization = paste("token", cred$password))
-        req <- curl::curl_fetch_memory("https://api.github.com/user", handle = hx)
+        req <- curl::curl_fetch_memory(paste0(url, '/user'), handle = hx)
         if(req$status_code >= 400){
           message("Authentication failed. Token invalid.")
           credential_reject(cred)
@@ -57,13 +60,43 @@ set_github_pat <- function(force_new = FALSE, validate = interactive(), verbose 
           message(sprintf("Using GITHUB_PAT from %s (credential helper: %s)", data$name, helper))
         }
       }
-      return(Sys.setenv(GITHUB_PAT = cred$password))
+      return(do.call(Sys.setenv, structure(list(cred$password), names = pat_var)))
     }
   }
   if(verbose == TRUE){
     message("Failed to find a valid GITHUB_PAT after 3 attempts")
   }
   return(FALSE)
+}
+
+# Some notes:
+# - Format: GITHUB_PAT_({user}_AT_){host}
+# - By default, tokens get stored as user 'PersonalAccessToken' in the credential
+#   store, to distinguish them from user/password credentials that the user may have
+#   stored. You can override this via the URL, but better not.
+# - GitHub usernames (incl GHE) can only contain alphanumeric characters and dashes.
+# - Hostnames are case insensitive. We normalize hostname tolower, so you can
+#   safely parse _AT_ to look for custom usernames.
+get_pat_credential_url <- function(url){
+  # strip protocol
+  url <- sub("^[a-z]+://", "", tolower(url))
+  # strip path
+  url <- sub("/.*$", "", url)
+  url <- sub("api.github.com", "github.com", url, fixed = TRUE)
+  pat_url <- if(grepl("@", url, fixed = TRUE)){
+    paste0('https://', url)
+  } else {
+    paste0('https://PersonalAccessToken@', url)
+  }
+  pat_var <- if(grepl("github.com$", url)){
+    'GITHUB_PAT'
+  } else {
+    paste0('GITHUB_PAT_', gsub("\\.", "_", sub("^.+@", "", url)))
+  }
+  list(
+    url = pat_url,
+    var = pat_var
+  )
 }
 
 message <- function(...){

@@ -64,8 +64,12 @@ set_default_cred_helper <- function(){
     invisible(tryCatch({
       credential_helper_get()
     }, error = function(...){
-      helper <- credential_helper_list()[1]
-      credential_helper_set(helper, global = TRUE)
+      tryCatch({
+        helper <- credential_helper_list()[1]
+        credential_helper_set(helper, global = TRUE)
+      }, error = function(e){
+        packageStartupMessage(e$message)
+      })
     }))
   }
 }

@@ -4,10 +4,17 @@
 \alias{set_github_pat}
 \title{Set your Github Personal Access Token}
 \usage{
-set_github_pat(force_new = FALSE, validate = interactive(), verbose = validate)
+set_github_pat(
+  force_new = FALSE,
+  url = "https://api.github.com",
+  validate = interactive(),
+  verbose = validate
+)
 }
 \arguments{
 \item{force_new}{forget existing pat, always ask for new one.}
+
+\item{url}{a custom server for GitHub Enterprise users.}
 
 \item{validate}{checks with the github API that this token works. Defaults to
 \code{TRUE} only in an interactive R session (not when running e.g. CMD check).}
